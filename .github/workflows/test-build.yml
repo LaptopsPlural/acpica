@@ -1,0 +1,51 @@
+name: Test build
+
+on:
+  push:
+    branches: [pending]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        run: |
+          set -euo pipefail
+          git init -q .
+          git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git"
+          git fetch -q --depth=1 origin "$GITHUB_SHA"
+          git checkout -q --detach FETCH_HEAD
+          git log -1 --oneline
+
+      - name: Install build tools
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends bison flex m4
+          gcc --version | head -n1
+          bison --version | head -n1
+          flex --version
+
+      - name: make
+        run: |
+          set -o pipefail
+          make 2>&1 | tee "$RUNNER_TEMP/build.log"
+
+      - name: Build log summary
+        if: failure()
+        run: |
+          {
+            echo '### Build failed — last 100 lines of the build log'
+            echo '```'
+            tail -n 100 "$RUNNER_TEMP/build.log" 2>/dev/null || echo "(no build log)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
